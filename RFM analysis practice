@@ -1,0 +1,118 @@
+-- Inspect data
+select * from sales_data_sample
+
+-- Unique Values
+select distinct status from sales_data_sample
+select distinct year_id from sales_data_sample
+select distinct PRODUCTLINE from sales_data_sample
+select distinct COUNTRY from sales_data_sample
+select distinct DEALSIZE from sales_data_sample
+select distinct TERRITORY from sales_data_sample
+
+
+-- EDA
+-- group sales by productline
+select PRODUCTLINE, sum(sales) Revenue
+from sales_data_sample
+group by PRODUCTLINE -- groupby when performing an aggregate
+order by 2 desc
+
+-- group sales by year
+select YEAR_ID, sum(sales) Revenue
+from sales_data_sample
+group by YEAR_ID -- groupby when performing an aggregate
+order by 2 desc
+-- 2005 revenue is significantly lower than other years
+
+-- check why
+select distinct MONTH_ID from sales_data_sample
+where year_id = 2005 -- only operated 5 months in 2005
+
+-- group sales by dealsize
+select DEALSIZE, sum(sales) Revenue
+from sales_data_sample
+group by DEALSIZE
+order by 2 desc
+
+-- best month sales in a specific year by revenue
+select MONTH_ID, sum(sales) Revenue, count(ORDERNUMBER) Frequency
+from sales_data_sample
+where YEAR_ID = 2004
+group by MONTH_ID
+order by Revenue desc
+-- both 2003 and 2004 november has the most sales
+
+
+-- Analyze November sales
+select MONTH_ID, PRODUCTLINE, sum(sales) Revenue, COUNT(ORDERNUMBER) Frequency
+from sales_data_sample
+where MONTH_ID = 11 and YEAR_ID = 2004
+group by MONTH_ID, PRODUCTLINE -- group by columns that are not a part of aggregate functions
+order by Revenue desc
+
+
+DROP TABLE IF EXISTS #rfm -- creates a local temp table ** refer to line 80
+-- RFM Analysis (Recency-Frequency-Monetary segmenting technique)
+;with rfm as
+(
+	select
+		CUSTOMERNAME,
+		sum(sales) TotalMonetaryValue,
+		avg(sales) AVGMonetaryValue,
+		count(ORDERNUMBER) Frequency,
+		max(ORDERDATE) Last_order_date,
+		(select max(ORDERDATE) from sales_data_sample) max_order_date,
+		DATEDIFF(DD, max(ORDERDATE), (select max(ORDERDATE) from sales_data_sample)) Recency --DATEDIFF gives the difference between dates by the type of datetime selected; in this case DD (days)
+	from sales_data_sample
+	group by CUSTOMERNAME
+),
+rfm_calc as
+(-- Bucketing with NTILE (Dividing the dataset into buckets and assigning each data a variable equal to NTILE(x))
+	select r.*,
+		NTILE(4) Over (order by Recency desc) rfm_recency,
+		NTILE(4) Over (order by Frequency) rfm_frequency,
+		NTILE(4) Over (order by TotalMonetaryValue) rfm_monetary -- Number of Buckets
+	from rfm r
+)
+select 
+	c.*, rfm_recency + rfm_frequency + rfm_monetary as rfm_cell,
+	cast(rfm_recency as varchar) + cast(rfm_frequency as varchar) + cast(rfm_monetary as varchar)rfm_cell_string
+	into #rfm -- hashtag creates a local temp table that can be run in this query only and will be deleted upon close. Easy to use not having to select and run queries from all the way back
+from rfm_calc c
+
+
+-- Creating a case statement to segment customers based on rfm analysis
+select CUSTOMERNAME, rfm_recency, rfm_frequency, rfm_monetary,
+	case
+		when rfm_cell_string in (111, 112, 121, 122, 123, 132, 211, 212, 114, 141) then 'lost_customers' -- lost customers
+		when rfm_cell_string in (133, 144, 134, 143, 244, 334, 343, 344) then 'slipping away, cannot lose' -- big spenders who haven't purchased lately
+		when rfm_cell_string in (311, 411, 331, 421) then 'new customers' 
+		when rfm_cell_string in (222, 223, 233, 322) then 'potential churners'
+		when rfm_cell_string in (323, 333, 321, 422, 332, 432) then 'active' -- customers that buy often and recently but at low price
+		when rfm_cell_string in (433, 434, 443, 444) then 'loyal'
+	end rfm_segment
+from #rfm
+
+
+
+-- products most often sold together
+
+select distinct ORDERNUMBER, stuff( --stuff fuction see line 115)
+		(select ',' + PRODUCTCODE -- added ',' for xml path
+		from sales_data_sample
+		where ordernumber in 
+			(
+				select ORDERNUMBER
+				from (
+					select ORDERNUMBER, count(*) rn -- count * rn shows the number of productcodes sold by each ordernumber
+					from sales_data_sample
+					where STATUS = 'Shipped'
+					group by ORDERNUMBER
+				)m
+				where rn = 2 -- 2 items ordered
+			)
+			and sales_data_sample.ordernumber = s.ordernumber
+			for xml path (''))--markup productcodes to encode data
+			, 1, 1, '') ProductCodes-- stuff function to delete first comma in the xml path **THIS MAKES YOUR PATH INTO A STRING**
+from sales_data_sample s
+order by ProductCodes desc
