@@ -1,0 +1,21 @@
+-- join tables to specify video category
+update KR_youtube_trending_data set categoryId=KR_category_id.snippet_title
+from KR_youtube_trending_data
+join KR_category_id on (KR_youtube_trending_data.categoryId=KR_category_id.id)
+
+--remove columns that will not be needed
+alter table KR_youtube_trending_data DROP COLUMN channelID, tags, description, ratings_disabled, comments_disabled
+alter table KR_youtube_trending_data DROP COLUMN video_id
+
+-- find the most trending videos of 2023 by view and like count with duplicate trending videos removed
+
+select title, view_count, publishedAt, likes, trending_date,
+Case when view_count / NULLIF(likes, 0) > 0.0375 then 'trending' -- 3.75% view to like ratio 
+	 else 'not trending' END as 'global trending'
+from KR_youtube_trending_data
+where 
+view_count = (select max(view_count) from KR_youtube_trending_data i where i.title = KR_youtube_trending_data.title) and 
+view_count > 10000000 and 
+(trending_date between '2023-01-01' AND '2023-12-31') and 
+likes != 0
+order by publishedAt asc;
