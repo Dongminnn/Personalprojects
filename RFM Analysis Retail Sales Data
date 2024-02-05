@@ -1,0 +1,92 @@
+Data was retrieved from https://www.kaggle.com/datasets/shedai/retail-data-set/data
+
+
+-- inspecting data
+select * from retailsales
+
+-- inspecting columns
+select distinct InvoiceID from retailsales
+select distinct ProductID from retailsales
+select distinct CustomerID from retailsales
+
+--group sales by productid
+select ProductID, sum(TotalSales) Revenue
+from retailsales
+group by ProductID
+order by 2 desc
+
+--group sales by year
+select YEAR(Date) , sum(TotalSales) Revenue
+from retailsales
+group by YEAR(Date)
+order by 2 desc
+-- 2022 highest revenue, 2023 smallest
+
+select distinct MONTH(Date) month_id from retailsales
+where YEAR(Date) = 2023
+order by month_id asc
+-- operations in 2023 only consists of jan to march
+
+-- best month sales
+select MONTH(Date), sum(TotalSales) Revenue, count(InvoiceID) Frequency
+from retailsales
+where YEAR(Date) = 2022
+group by MONTH(Date)
+order by Revenue desc
+-- months of september ~ december shows to have highest revenue across all years
+
+select MONTH(Date) month, ProductID, sum(Totalsales) Revenue, COUNT(InvoiceID) Frequency
+from retailsales
+where MONTH(Date) = 12 and YEAR(Date) = 2022
+group by MONTH(Date), ProductID 
+order by Revenue desc
+-- productID 1241 and 885 produce highest revenue
+
+select CustomerID, sum(Totalsales) Revenue, COUNT(InvoiceID) Frequency
+from retailsales
+group by CustomerID
+order by Frequency desc
+-- inspect which customer has the most purchase in revenue and frequency
+
+-- rfm analysis
+DROP TABLE IF EXISTS #rfm
+;with rfm as
+(
+	select
+		CustomerID,
+		sum(Totalsales) TotalMonetaryValue,
+		avg(Totalsales) AVGMonetaryValue,
+		count(InvoiceID) Frequency,
+		max(Date) Last_order_date,
+		(select max(Date) from retailsales) max_order_date,
+		DATEDIFF(DD, max(Date), (select max(Date) from retailsales)) Recency --DATEDIFF gives the difference between dates by the type of datetime selected; in this case DD (days)
+	from retailsales
+	group by CustomerID
+),
+rfm_calc as
+(
+	select r.*,
+		NTILE(4) Over (order by Recency desc) rfm_recency,
+		NTILE(4) Over (order by Frequency) rfm_frequency,
+		NTILE(4) Over (order by TotalMonetaryValue) rfm_monetary -- Number of Buckets
+	from rfm r
+)
+select 
+	c.*, rfm_recency + rfm_frequency + rfm_monetary as rfm_cell,
+	cast(rfm_recency as varchar) + cast(rfm_frequency as varchar) + cast(rfm_monetary as varchar)rfm_cell_string
+	into #rfm -- hashtag creates a local temp table that can be run in this query only and will be deleted upon close. Easy to use not having to select and run queries from all the way back
+from rfm_calc c
+
+
+select CustomerID, rfm_recency, rfm_frequency, rfm_monetary,
+	case
+		when rfm_cell_string in (111, 112, 121, 122, 123, 132, 211, 212, 114, 141) then 'lost_customers'
+		when rfm_cell_string in (133, 144, 134, 143, 244, 334, 343, 344) then 'losing'
+		when rfm_cell_string in (311, 411, 331, 421) then 'new customers' 
+		when rfm_cell_string in (222, 223, 233, 322) then 'potential loyal'
+		when rfm_cell_string in (323, 333, 321, 422, 332, 432) then 'active'
+		when rfm_cell_string in (433, 434, 443, 444) then 'loyal'
+	end rfm_segment
+from #rfm
+
+select * from #rfm
