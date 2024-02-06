@@ -90,3 +90,20 @@ select CustomerID, rfm_recency, rfm_frequency, rfm_monetary,
 from #rfm
 
 select * from #rfm
+
+select rfm_segment, count(*)
+from #rfm_segmented
+where rfm_segment is not null
+group by rfm_segment
+
+
+-- highest rfm segment is lost customers
+-- since 2022 has the highest sales, it could be a sign that the customers who purchased during 2019~2021 have left since and the business is growing on new customers
+-- loyal customers are still the next highest being 112
+
+select rfm_segment, count(*)
+from #rfm_segmented
+where rfm_segment is null
+group by rfm_segment
+
+-- 25 unclassified customers
