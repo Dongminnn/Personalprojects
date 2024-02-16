@@ -1,0 +1,162 @@
+import pandas as pd
+import numpy as np
+import datetime as dt
+import matplotlib.pyplot as plt
+from matplotlib import colormaps
+import seaborn as sns
+
+df = pd.read_csv('/Users/dongmin/Desktop/datasets/coffeechain.csv')
+
+df.head()
+
+df.describe()
+
+df.info()
+
+df.isnull().sum()
+
+df.shape
+
+df['Date'] = pd.to_datetime(df['Date'])
+df['Year'] = df['Date'].dt.year
+df['Month'] = df['Date'].dt.month
+
+#Analyze sales by year and month
+yearly_sales = df.groupby('Year')[['Sales','Profit']].sum().reset_index()
+yearly_sales.sort_values('Year',ascending=True)
+
+monthly_sales = df.groupby('Month')['Sales'].sum().reset_index()
+monthly_sales.sort_values('Month',ascending=True)
+
+#Analyze total time series of business
+month_operations = df.groupby('Year').agg({'Month':'nunique'})
+month_operations
+
+#Sales by State
+state_sales = df.groupby('State')[['Sales']].sum()
+state_sales = state_sales.sort_values('Sales', ascending=True)
+state_sales
+
+state_sales.plot(kind='bar', figsize=(10,5), width=0.5)
+plt.xlabel('States')
+plt.ylabel('$')
+
+#Sales by market
+market_analysis = df.groupby(['Market','Market_size'])[['Sales']].sum()
+market_analysis = market_analysis.sort_values('Sales', ascending=True)
+market_analysis
+
+market_analysis.plot(kind='bar', figsize=(10,5), width=0.5)
+plt.xlabel('Markets')
+plt.ylabel('$')
+
+#Product Sales Analysis
+product_sales = df.groupby('Product')['Sales'].sum().reset_index()
+product_sales.sort_values('Sales', ascending=False)
+
+product_sale_analysis = pd.pivot_table(
+   df,
+   index=['Product'],
+   aggfunc={'Sales': np.sum, 'Profit': np.sum, 'Cogs': np.sum, 'State': len}
+).rename(columns={'State': 'count'}).sort_values('Sales', ascending=True)
+
+product_sale_analysis['Cogs_per_sale'] = (product_sale_analysis['Cogs'] / product_sale_analysis['count']).round(2)
+product_sale_analysis['Profit_per_sale'] = (product_sale_analysis['Profit'] / product_sale_analysis['count']).round(2)
+product_sale_analysis['Totalsales_per_sale'] = (product_sale_analysis['Sales'] / product_sale_analysis['count']).round(2)
+
+product_sale_analysis
+
+product_sale_analysis.iloc[:,:3].plot(kind='bar', figsize=(10,5), width=0.7)
+plt.xlabel('Products')
+plt.ylabel('$')
+plt.title('Product Sale Analysis', fontweight='bold')
+plt.xticks(rotation=45)
+plt.legend(bbox_to_anchor=(1,1))
+plt.show()
+
+product_sale_analysis.iloc[:,4:].plot(kind='bar', figsize=(10,5), width=0.7)
+plt.xlabel('Products')
+plt.ylabel('$')
+plt.title('Product Sale Analysis per sale', fontweight='bold')
+plt.xticks(rotation=45)
+plt.legend(bbox_to_anchor=(1,1))
+plt.show()
+
+#State Sales Analysis
+
+state_sales_analysis = df.groupby('State')['Sales'].sum().reset_index()
+state_sales_analysis.sort_values('Sales', ascending=False)
+
+state_sales_analysis = pd.pivot_table(
+   df,
+   index=['State'],
+   aggfunc={'Sales': np.sum, 'Profit': np.sum, 'Cogs': np.sum, 'Target_cogs': np.sum, 'Target_profit': np.sum, 'Product': len}
+).rename(columns={'Product': 'count'}).sort_values('Sales', ascending=True)
+
+state_sales_analysis.sort_values('Sales', ascending=False)
+
+state_sales_analysis[['Cogs','Profit','Sales']].plot(kind='bar', figsize=(10,5), width=0.7)
+plt.xlabel('State')
+plt.ylabel('$')
+plt.title('State Sale Analysis', fontweight='bold')
+plt.xticks(rotation=45)
+plt.legend(loc='upper left', bbox_to_anchor=(1,1))
+plt.show()
+
+target_to_actual = df.groupby('State')[['DifferenceBetweenActualandTargetProfit']].sum()
+target_to_actual = target_to_actual.sort_values('DifferenceBetweenActualandTargetProfit', ascending=False)
+ax = target_to_actual.plot(kind='bar', figsize=(10,6), width=0.8)
+ax.get_legend().remove()
+for bar in ax.patches:
+    if bar.get_height()<0:
+        bar.set_color('red')
+    else:
+        bar.set_color('green')
+plt.xlabel('States')
+plt.ylabel('$')
+plt.title('Difference Between Actual to Target Profit by State')
+
+utah = df[df['State']=='Utah']
+utahdata = utah.groupby('Year')[['Cogs','Marketing','Total_expenses','Profit']].sum()
+ax2 = utahdata.plot(kind='bar', figsize=(10,6), width=0.8)
+
+utah_operations = utah.groupby('Year')['Month'].nunique()
+utah_operations
+
+state_sales_analysis['CogsDiff'] = state_sales_analysis['Cogs'] - state_sales_analysis['Target_cogs']
+state_sales_analysis = state_sales_analysis.sort_values('CogsDiff', ascending=False)
+
+ax1 = state_sales_analysis.loc[:,['CogsDiff']].plot(kind='bar', figsize=(10,6), width=0.8)
+ax1.get_legend().remove()
+for bar in ax1.patches:
+    if bar.get_height()<0:
+        bar.set_color('red')
+    else:
+        bar.set_color('green')
+plt.xlabel('States')
+plt.ylabel('$')
+plt.title('Difference Between Actual to Target COGS by State')
+
+illinois = df[df['State']=='Illinois']
+illinoisdata = illinois.groupby('Year')[['Cogs','Marketing','Total_expenses','Profit']].sum()
+ax3 = illinoisdata.plot(kind='bar', figsize=(10,6), width=0.8)
+
+illinois_operations = illinois.groupby('Year')['Month'].nunique()
+illinois_operations
+
+# find the types of products that were most sold in illinois and find their per sale cogs to explain high cogs
+
+#Growth KPI
+
+
+growth = df.groupby('Year')[['Marketing', 'Profit','Sales','Cogs']].sum()
+growth['Profit_to_Sales%'] = ((1 - (growth['Sales'] - growth['Profit']) / growth['Sales']) * 100).round(2)
+growth['Increased_Marketing%'] = growth['Marketing'].pct_change().round(4) * 100
+growth['Increased_Sales%'] = growth['Sales'].pct_change().round(4)*100
+growth['ROI'] = (growth['Profit']/growth['Marketing']*100).round(2)
+growth
+
+growth.iloc[:,:4].plot(kind='bar', figsize=(10,5), width=0.5)
+plt.xlabel('Year')
+plt.ylabel('$')
+
